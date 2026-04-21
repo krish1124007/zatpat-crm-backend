@@ -3,10 +3,7 @@ import User from '../models/User.js';
 import {
   signAccessToken,
   signRefreshToken,
-  setAuthCookies,
-  clearAuthCookies,
   verifyRefreshToken,
-  REFRESH_COOKIE,
 } from '../utils/jwt.js';
 import { recordAudit } from '../middleware/auditLog.js';
 import { getClientIP } from '../utils/getClientIP.js';
@@ -50,33 +47,36 @@ export async function login(req, res) {
   await user.save();
 
   const tokens = tokensFor(user);
-  setAuthCookies(res, tokens);
 
   req.user = user;
   await recordAudit({ req, action: 'login', status: 'success' });
 
-  return res.json({ user: user.toSafeJSON() });
+  return res.json({ 
+    user: user.toSafeJSON(),
+    ...tokens 
+  });
 }
 
 export async function refresh(req, res) {
-  const token = req.cookies?.[REFRESH_COOKIE];
-  if (!token) return res.status(401).json({ error: 'No refresh token' });
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(401).json({ error: 'No refresh token' });
 
   try {
-    const payload = verifyRefreshToken(token);
+    const payload = verifyRefreshToken(refreshToken);
     const user = await User.findById(payload.sub);
     if (!user || !user.isActive) return res.status(401).json({ error: 'User not found' });
 
     const tokens = tokensFor(user);
-    setAuthCookies(res, tokens);
-    return res.json({ user: user.toSafeJSON() });
+    return res.json({ 
+      user: user.toSafeJSON(),
+      ...tokens 
+    });
   } catch {
     return res.status(401).json({ error: 'Invalid refresh token' });
   }
 }
 
 export async function logout(req, res) {
-  clearAuthCookies(res);
   if (req.user) await recordAudit({ req, action: 'logout' });
   return res.json({ ok: true });
 }
