@@ -19,7 +19,7 @@ export function verifyRefreshToken(token) {
 
 const baseCookieOpts = {
   httpOnly: true,
-  sameSite: 'lax',
+  sameSite: env.cookie.secure ? 'none' : 'lax',
   secure: env.cookie.secure,
   path: '/',
 };

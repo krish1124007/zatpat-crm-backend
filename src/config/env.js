@@ -19,8 +19,8 @@ export const env = {
   },
 
   cookie: {
-    domain: process.env.COOKIE_DOMAIN || 'localhost',
-    secure: process.env.COOKIE_SECURE === 'true',
+    domain: process.env.COOKIE_DOMAIN, // Let browser handle it or use from env
+    secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : isProd,
   },
 
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
