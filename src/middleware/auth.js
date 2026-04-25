@@ -1,5 +1,5 @@
 import User from '../models/User.js';
-import { ACCESS_COOKIE, verifyAccessToken } from '../utils/jwt.js';
+import { verifyAccessToken } from '../utils/jwt.js';
 
 export async function requireAuth(req, res, next) {
   try {
