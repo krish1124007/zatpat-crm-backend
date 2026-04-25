@@ -26,6 +26,8 @@ import insuranceRoutes from './routes/insurance.routes.js';
 import contestsRoutes from './routes/contests.routes.js';
 import followupsRoutes from './routes/followups.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import disbursementTrackerRoutes from './routes/disbursementTracker.routes.js';
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,6 +71,8 @@ app.use('/api/v1/insurance', insuranceRoutes);
 app.use('/api/v1/contests', contestsRoutes);
 app.use('/api/v1/followups', followupsRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/disbursement-trackers', disbursementTrackerRoutes);
+
 
 // Health & auth smoke-test endpoints
 app.get('/api/v1/health', (_req, res) => res.json({ ok: true }));
