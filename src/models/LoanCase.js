@@ -122,7 +122,7 @@ const loanCaseSchema = new mongoose.Schema(
     bankPassword: { type: String, default: '', trim: true },
 
     // Loan
-    product: { type: String, enum: PRODUCTS, default: 'HL' },
+    product: { type: String, default: 'HL' },
     loanAmount: { type: Number, default: 0 }, // paisa
     sanctionedAmount: { type: Number, default: 0 }, // paisa
     disbursedAmount: { type: Number, default: 0 }, // paisa
@@ -130,7 +130,7 @@ const loanCaseSchema = new mongoose.Schema(
     tenure: { type: Number, default: 0 }, // months
 
     // Property
-    propertyType: { type: String, enum: [...PROPERTY_TYPES, ''], default: '' },
+    propertyType: { type: String, default: '' },
 
     // Bank / channel
     bankName: { type: String, default: '', index: true },
@@ -175,7 +175,7 @@ const loanCaseSchema = new mongoose.Schema(
     handoverDate: { type: Date },
 
     // Status
-    currentStatus: { type: String, enum: LOAN_STATUSES, default: 'Query', index: true },
+    currentStatus: { type: String, default: 'Query', index: true },
     confirmationStatus: { type: String, default: '' },
     handoverStatus: { type: String, default: '' },
 
