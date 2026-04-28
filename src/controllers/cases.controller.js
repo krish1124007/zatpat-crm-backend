@@ -353,26 +353,6 @@ export async function listReferencePartners(req, res) {
   res.json({ items: formatted });
 }
 
-// Part payments view: all disbursed cases with part disbursement data
-export async function listPartPayments(req, res) {
-  const { search } = req.query;
-  const filter = {
-    currentStatus: 'Disbursed',
-    disbursementType: 'Part',
-  };
-  if (search) {
-    const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    filter.$or = [{ customerName: rx }, { phone: rx }, { fileNumber: rx }];
-  }
-
-  const items = await LoanCase.find(filter)
-    .select('srNo fileNumber customerName phone bankName disbursedAmount sanctionedAmount loanAmount partDisbursements paymentReceived paymentDone pendingPaymentAmount postDisbursementStage handledBy disbursementDate insuranceCompany insuranceAmount insuranceStatus frankingNotary loanExpenses channelName product roi')
-    .populate('handledBy', 'name')
-    .sort({ disbursementDate: -1 })
-    .lean();
-
-  res.json({ items });
-}
 
 // Get dropdown options by type
 export async function getDropdownOptions(req, res) {
