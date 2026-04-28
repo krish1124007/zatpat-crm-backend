@@ -163,6 +163,7 @@ const loanCaseSchema = new mongoose.Schema(
       mobileNumber: { type: String, default: '' },
       emailId: { type: String, default: '' },
       handoverConfirmation: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
+      bankerConfirmation: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
     },
 
     // Dates

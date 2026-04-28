@@ -93,6 +93,7 @@ const createSchema = z.object({
     mobileNumber: z.string().optional(),
     emailId: z.string().optional(),
     handoverConfirmation: z.enum(['', 'Done', 'Pending']).optional(),
+    bankerConfirmation: z.enum(['', 'Done', 'Pending']).optional(),
   }).optional(),
   handledBy: z.string().optional(),
   loginDate: z.coerce.date().optional(),
