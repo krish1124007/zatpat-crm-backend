@@ -49,6 +49,8 @@ const UPDATABLE_FIELDS = new Set([
   'frankingNotary',
   // Loan expenses
   'loanExpenses',
+  // Disbursement Tracker
+  'saleDeedAmount', 'ocrAmount', 'parallelFundingAmount', 'isFullDisbursed', 'partPayments'
 ]);
 
 function pickUpdatable(body) {

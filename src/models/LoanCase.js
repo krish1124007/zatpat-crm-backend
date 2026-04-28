@@ -239,9 +239,16 @@ const loanCaseSchema = new mongoose.Schema(
     paymentDone: { type: [paymentSchema], default: [] },
     pendingPaymentAmount: { type: Number, default: 0 }, // paisa
 
+    // Disbursement Tracker Fields
+    saleDeedAmount: { type: Number, default: 0 }, // paisa
+    ocrAmount: { type: Number, default: 0 }, // paisa
+    parallelFundingAmount: { type: Number, default: 0 }, // paisa
+    isFullDisbursed: { type: Boolean, default: false },
+
     // Sub-collections
     followUps: { type: [followUpSchema], default: [] },
     partDisbursements: { type: [partDisbursementSchema], default: [] },
+    partPayments: { type: [partDisbursementSchema], default: [] },
     creditNotes: { type: [creditNoteSchema], default: [] },
 
     offerBeforeProcess: { type: offerSchema, default: () => ({}) },
