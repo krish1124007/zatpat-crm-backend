@@ -98,6 +98,7 @@ const createSchema = z.object({
     emailId: z.string().optional(),
     handoverConfirmation: z.enum(['', 'Done', 'Pending']).optional(),
     bankerConfirmation: z.enum(['', 'Done', 'Pending']).optional(),
+    invoiceStatus: z.enum(['', 'Done', 'Pending']).optional(),
   }).optional(),
   handledBy: z.string().optional(),
   loginDate: z.coerce.date().optional(),
@@ -276,17 +277,31 @@ export async function addFollowUp(req, res) {
 }
 
 const paymentZodSchema = z.object({
-  date: z.coerce.date().optional(),
-  amount: z.number().int().nonnegative(), // paisa
-  mode: z.string().optional(),
+  // Row 1
+  invoiceNumber: z.string().optional(),
+  invoiceDate: z.coerce.date().optional(),
+  disbursedAmount: z.number().int().nonnegative().optional(), // paisa
+  // Row 2
+  invoiceAmount: z.number().int().nonnegative().optional(), // paisa
+  amountDoneStatus: z.string().optional(),
+  amountDoneDate: z.coerce.date().optional(),
+  // Row 3
+  gstAmount: z.number().int().nonnegative().optional(),
+  gstStatus: z.string().optional(),
+  gstDate: z.coerce.date().optional(),
+  // Row 4
+  bankName: z.string().optional(),
   reference: z.string().optional(),
+  shortfall: z.number().int().nonnegative().optional(),
+  shortfallReason: z.string().optional(),
+  
+  // Legacy / other
+  date: z.coerce.date().optional(),
+  amount: z.number().int().nonnegative().optional(), // legacy actual amount
+  mode: z.string().optional(),
   note: z.string().optional(),
   party: z.string().optional(),
   disbursementNumber: z.string().optional(),
-  gstStatus: z.string().optional(),
-  gstAmount: z.number().int().nonnegative().optional(),
-  shortfall: z.number().int().nonnegative().optional(),
-  shortfallReason: z.string().optional(),
   paymentDate: z.coerce.date().optional(),
 });
 
@@ -398,6 +413,29 @@ export async function listReferencePartners(req, res) {
   res.json({ items: formatted });
 }
 
+export async function referencePartnersAutocomplete(req, res) {
+  // Get unique reference partners with their latest details
+  const items = await LoanCase.aggregate([
+    { $match: { referenceName: { $nin: [null, ''] } } },
+    { $sort: { createdAt: -1 } },
+    {
+      $group: {
+        _id: '$referenceName',
+        referencePhone: { $first: '$referencePhone' },
+        referenceDetails: { $first: '$referenceDetails' },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  const formatted = items.map((it) => ({
+    referenceName: it._id,
+    referencePhone: it.referencePhone || '',
+    referenceDetails: it.referenceDetails || {},
+  }));
+
+  res.json({ items: formatted });
+}
 
 // Get dropdown options by type
 export async function getDropdownOptions(req, res) {

@@ -59,17 +59,34 @@ const followUpSchema = new mongoose.Schema(
 
 const paymentSchema = new mongoose.Schema(
   {
-    date: { type: Date, default: Date.now },
-    amount: { type: Number, default: 0 }, // paisa
-    mode: { type: String, default: 'Cash' }, // Cash / Bank / UPI / Cheque
+    // Row 1
+    invoiceNumber: { type: String, default: '' },
+    invoiceDate: { type: Date },
+    disbursedAmount: { type: Number, default: 0 }, // paisa
+    
+    // Row 2
+    invoiceAmount: { type: Number, default: 0 }, // paisa
+    amountDoneStatus: { type: String, enum: ['Done', 'Pending', ''], default: '' },
+    amountDoneDate: { type: Date },
+    
+    // Row 3
+    gstAmount: { type: Number, default: 0 }, // paisa
+    gstStatus: { type: String, enum: ['Pending', 'Received', ''], default: '' },
+    gstDate: { type: Date },
+    
+    // Row 4
+    bankName: { type: String, default: '' },
     reference: { type: String, default: '' },
+    shortfall: { type: Number, default: 0 }, // paisa
+    shortfallReason: { type: String, default: '' },
+
+    // Legacy / Other
+    date: { type: Date, default: Date.now },
+    amount: { type: Number, default: 0 }, // paisa (actual amount received)
+    mode: { type: String, default: 'Cash' }, // Cash / Bank / UPI / Cheque
     note: { type: String, default: '' },
     party: { type: String, default: '' }, // for paymentDone: who got paid
     disbursementNumber: { type: String, default: '' }, // 1st, 2nd, 3rd disbursement etc.
-    gstStatus: { type: String, enum: ['Pending', 'Received', ''], default: '' },
-    gstAmount: { type: Number, default: 0 }, // paisa
-    shortfall: { type: Number, default: 0 }, // paisa - any amount cut by bank/party
-    shortfallReason: { type: String, default: '' },
     paymentDate: { type: Date }, // actual date payment received
   },
   { _id: true, timestamps: true }
@@ -175,6 +192,7 @@ const loanCaseSchema = new mongoose.Schema(
       emailId: { type: String, default: '' },
       handoverConfirmation: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
       bankerConfirmation: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
+      invoiceStatus: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
     },
 
     // Dates
