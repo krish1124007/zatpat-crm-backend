@@ -50,7 +50,11 @@ const UPDATABLE_FIELDS = new Set([
   // Loan expenses
   'loanExpenses',
   // Disbursement Tracker
-  'saleDeedAmount', 'ocrAmount', 'parallelFundingAmount', 'isFullDisbursed', 'partPayments'
+  'saleDeedAmount', 'ocrAmount', 'parallelFundingAmount', 'isFullDisbursed', 'partPayments',
+  // Communication
+  'sendFeedbackForm', 'sendReviewLink',
+  // Referral Payout
+  'referralPayout'
 ]);
 
 function pickUpdatable(body) {
@@ -100,6 +104,24 @@ const createSchema = z.object({
   sanctionDate: z.coerce.date().optional(),
   disbursementDate: z.coerce.date().optional(),
   handoverDate: z.coerce.date().optional(),
+  saleDeedAmount: z.number().int().nonnegative().optional(),
+  ocrAmount: z.number().int().nonnegative().optional(),
+  parallelFundingAmount: z.number().int().nonnegative().optional(),
+  isFullDisbursed: z.boolean().optional(),
+  partPayments: z.array(z.object({
+    amount: z.number().int().nonnegative().optional(),
+    date: z.coerce.date().optional()
+  })).optional(),
+  sendFeedbackForm: z.enum(['', 'Done', 'Pending']).optional(),
+  sendReviewLink: z.enum(['', 'Done', 'Pending']).optional(),
+  referralPayout: z.object({
+    percentage: z.number().optional(),
+    amount: z.number().optional(),
+    status: z.enum(['Paid', 'Unpaid', '']).optional(),
+    date: z.coerce.date().optional(),
+    mode: z.enum(['Cash', 'Bank', '']).optional(),
+    bankName: z.string().optional(),
+  }).optional(),
 });
 
 export async function listCases(req, res) {
@@ -120,6 +142,12 @@ export async function listCases(req, res) {
     propertyType,
     disbursementType,
     referenceName,
+    bankerConfirmation,
+    handoverConfirmation,
+    insuranceStatus,
+    profession,
+    sendFeedbackForm,
+    sendReviewLink,
   } = req.query;
 
   const filter = {};
@@ -130,7 +158,14 @@ export async function listCases(req, res) {
   if (postDisbursementStage) filter.postDisbursementStage = postDisbursementStage;
   if (propertyType) filter.propertyType = propertyType;
   if (disbursementType) filter.disbursementType = disbursementType;
+  if (bankerConfirmation) filter['bankerDetails.bankerConfirmation'] = bankerConfirmation;
+  if (handoverConfirmation) filter['bankerDetails.handoverConfirmation'] = handoverConfirmation;
+  if (insuranceStatus) filter.insuranceStatus = insuranceStatus;
+  if (profession) filter.profession = profession;
+  if (sendFeedbackForm) filter.sendFeedbackForm = sendFeedbackForm;
+  if (sendReviewLink) filter.sendReviewLink = sendReviewLink;
   if (pendingPayment === 'true') filter.pendingPaymentAmount = { $gt: 0 };
+  if (req.query.hasPartPayment === 'true') filter['partPayments.0'] = { $exists: true };
   if (referenceName) {
     filter.referenceName = new RegExp(referenceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   }
@@ -326,6 +361,10 @@ export async function listReferencePartners(req, res) {
         totalDisbursedAmount: {
           $sum: { $cond: [{ $eq: ['$currentStatus', 'Disbursed'] }, '$disbursedAmount', 0] },
         },
+        totalPayoutAmount: { $sum: { $ifNull: ['$referralPayout.amount', 0] } },
+        totalPaidPayout: {
+          $sum: { $cond: [{ $eq: ['$referralPayout.status', 'Paid'] }, { $ifNull: ['$referralPayout.amount', 0] }, 0] },
+        },
         cases: {
           $push: {
             _id: '$_id',
@@ -336,6 +375,7 @@ export async function listReferencePartners(req, res) {
             currentStatus: '$currentStatus',
             loanAmount: '$loanAmount',
             disbursedAmount: '$disbursedAmount',
+            referralPayout: '$referralPayout',
           },
         },
       },
@@ -350,6 +390,8 @@ export async function listReferencePartners(req, res) {
     disbursedCases: it.disbursedCases,
     totalLoanAmount: it.totalLoanAmount,
     totalDisbursedAmount: it.totalDisbursedAmount,
+    totalPayoutAmount: it.totalPayoutAmount,
+    totalPaidPayout: it.totalPaidPayout,
     cases: it.cases,
   }));
 

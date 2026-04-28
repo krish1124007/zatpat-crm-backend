@@ -11,6 +11,7 @@ import {
   handlerPerformance,
   productBreakdown,
   pipelineSummary,
+  allDistributions,
 } from '../controllers/dashboard.controller.js';
 
 const router = Router();
@@ -25,5 +26,6 @@ router.get('/channel-breakdown', ah(channelBreakdown));
 router.get('/handler-performance', ah(handlerPerformance));
 router.get('/product-breakdown', ah(productBreakdown));
 router.get('/pipeline-summary', ah(pipelineSummary));
+router.get('/all-distributions', ah(allDistributions));
 
 export default router;

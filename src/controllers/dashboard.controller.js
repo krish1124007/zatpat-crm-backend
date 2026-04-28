@@ -39,6 +39,8 @@ export async function getKpis(_req, res) {
     totalDisbursedEver,
     avgLoanAmountAgg,
     sanctionedNotDisbursedAgg,
+    partPaymentsAgg,
+    unpaidReferralPayoutAgg,
   ] = await Promise.all([
     LoanCase.countDocuments({}),
     LoanCase.countDocuments({ currentStatus: { $in: ACTIVE_STATUSES } }),
@@ -72,6 +74,15 @@ export async function getKpis(_req, res) {
       { $match: { currentStatus: 'Sanctioned' } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$sanctionedAmount' } } },
     ]),
+    LoanCase.aggregate([
+      { $match: { 'partPayments.0': { $exists: true } } },
+      { $project: { sumOfParts: { $sum: '$partPayments.amount' } } },
+      { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$sumOfParts' } } }
+    ]),
+    LoanCase.aggregate([
+      { $match: { 'referralPayout.status': { $in: ['Unpaid', '', null] }, 'referralPayout.amount': { $gt: 0 } } },
+      { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$referralPayout.amount' } } }
+    ]),
   ]);
 
   const monthDisbursed = monthDisbursedAgg[0] || { count: 0, amount: 0 };
@@ -81,6 +92,8 @@ export async function getKpis(_req, res) {
   const totalDisbursed = totalDisbursedEver[0] || { count: 0, amount: 0 };
   const avgLoanAmount = avgLoanAmountAgg[0]?.avg || 0;
   const sanctionedPending = sanctionedNotDisbursedAgg[0] || { count: 0, amount: 0 };
+  const partPayments = partPaymentsAgg[0] || { count: 0, amount: 0 };
+  const unpaidReferralPayout = unpaidReferralPayoutAgg[0] || { count: 0, amount: 0 };
 
   res.json({
     totalCases,
@@ -97,6 +110,8 @@ export async function getKpis(_req, res) {
     avgLoanAmount: Math.round(avgLoanAmount),
     sanctionedPending,
     monthNetIncome: (monthInvoice.commission || 0) - (monthExpense.amount || 0),
+    partPayments,
+    unpaidReferralPayout,
   });
 }
 
@@ -197,6 +212,8 @@ export async function handlerPerformance(_req, res) {
       disbursedCases: { $sum: { $cond: [{ $eq: ['$currentStatus', 'Disbursed'] }, 1, 0] } },
       disbursedAmount: { $sum: { $cond: [{ $eq: ['$currentStatus', 'Disbursed'] }, '$disbursedAmount', 0] } },
       monthDisbursed: { $sum: { $cond: [{ $and: [{ $eq: ['$currentStatus', 'Disbursed'] }, { $gte: ['$disbursementDate', monthStart] }] }, 1, 0] } },
+      allStatuses: { $push: '$currentStatus' },
+      allProducts: { $push: '$product' }
     }},
     { $sort: { disbursedCases: -1 } },
   ]);
@@ -206,14 +223,29 @@ export async function handlerPerformance(_req, res) {
   const users = await User.find({ _id: { $in: userIds } }).select('name role').lean();
   const userMap = new Map(users.map((u) => [u._id.toString(), u]));
 
-  const items = agg.map((r) => ({
-    handler: userMap.get(r._id.toString()) || { name: 'Unknown' },
-    totalCases: r.totalCases,
-    activeCases: r.activeCases,
-    disbursedCases: r.disbursedCases,
-    disbursedAmount: r.disbursedAmount,
-    monthDisbursed: r.monthDisbursed,
-  }));
+  const items = agg.map((r) => {
+    const statusCounts = {};
+    for (const s of (r.allStatuses || [])) {
+      statusCounts[s] = (statusCounts[s] || 0) + 1;
+    }
+
+    const productCounts = {};
+    for (const p of (r.allProducts || [])) {
+      const prod = p || 'Unknown';
+      productCounts[prod] = (productCounts[prod] || 0) + 1;
+    }
+
+    return {
+      handler: userMap.get(r._id.toString()) || { name: 'Unknown' },
+      totalCases: r.totalCases,
+      activeCases: r.activeCases,
+      disbursedCases: r.disbursedCases,
+      disbursedAmount: r.disbursedAmount,
+      monthDisbursed: r.monthDisbursed,
+      statusCounts,
+      productCounts,
+    };
+  });
 
   res.json({ items });
 }
@@ -265,5 +297,42 @@ export async function pipelineSummary(_req, res) {
     rejected: statusMap['Rejected']?.count || 0,
     cancelled: statusMap['Cancelled']?.count || 0,
     notInterested: statusMap['NotInterested']?.count || 0,
+  });
+}
+
+// ── All Column Distributions ──
+export async function allDistributions(_req, res) {
+  const [
+    bankerConfirmationAgg,
+    handoverConfirmationAgg,
+    propertyTypeAgg,
+    insuranceStatusAgg,
+    professionAgg,
+    postDisbAgg,
+    disbursementTypeAgg,
+    feedbackAgg,
+    reviewAgg
+  ] = await Promise.all([
+    LoanCase.aggregate([{ $group: { _id: '$bankerDetails.bankerConfirmation', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$bankerDetails.handoverConfirmation', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$propertyType', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$insuranceStatus', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$profession', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$postDisbursementStage', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$disbursementType', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$sendFeedbackForm', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    LoanCase.aggregate([{ $group: { _id: '$sendReviewLink', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+  ]);
+
+  res.json({
+    bankerConfirmation: bankerConfirmationAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    handoverConfirmation: handoverConfirmationAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    propertyType: propertyTypeAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    insuranceStatus: insuranceStatusAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    profession: professionAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    postDisbursementStage: postDisbAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    disbursementType: disbursementTypeAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    sendFeedbackForm: feedbackAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
+    sendReviewLink: reviewAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
   });
 }

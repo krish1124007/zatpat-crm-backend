@@ -146,14 +146,25 @@ const loanCaseSchema = new mongoose.Schema(
 
     // Reference — who referred this case
     referralId: { type: String, default: '', trim: true, index: true },
-    referenceName: { type: String, default: '', trim: true },
-    referencePhone: { type: String, default: '', trim: true },
+    referenceName: { type: String, trim: true, default: '' },
+    referencePhone: { type: String, trim: true, default: '' },
+    referencePartner: { type: String, trim: true, default: '' },
     referenceDetails: {
-      mobileNumber: { type: String, default: '' },
-      bankName: { type: String, default: '' },
-      bankBranch: { type: String, default: '' },
-      accountNumber: { type: String, default: '' },
-      ifscCode: { type: String, default: '' },
+      mobileNumber: { type: String, trim: true, default: '' },
+      bankName: { type: String, trim: true, default: '' },
+      bankBranch: { type: String, trim: true, default: '' },
+      accountNumber: { type: String, trim: true, default: '' },
+      ifscCode: { type: String, trim: true, default: '' },
+    },
+    
+    // Referral Payout Tracking
+    referralPayout: {
+      percentage: { type: Number, default: 0 },
+      amount: { type: Number, default: 0 }, // auto-calculated or overridden
+      status: { type: String, enum: ['Paid', 'Unpaid', ''], default: 'Unpaid' },
+      date: { type: Date },
+      mode: { type: String, enum: ['Cash', 'Bank', ''], default: '' },
+      bankName: { type: String, trim: true, default: '' },
     },
     referencePartner: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner' },
 
@@ -184,6 +195,10 @@ const loanCaseSchema = new mongoose.Schema(
 
     // Post-disbursement tracking
     postDisbursementStage: { type: String, enum: [...POST_DISBURSEMENT_STAGES, ''], default: '' },
+
+    // Customer Communication / Feedback
+    sendFeedbackForm: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
+    sendReviewLink: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
 
     // Document checklist
     documents: {
