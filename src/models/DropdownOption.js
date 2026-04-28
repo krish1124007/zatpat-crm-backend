@@ -6,6 +6,8 @@ export const DROPDOWN_TYPES = [
   'referralName',
   'propertyType',
   'provisionalBank',
+  'product',
+  'status',
 ];
 
 const dropdownOptionSchema = new mongoose.Schema(
