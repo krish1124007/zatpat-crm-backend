@@ -3,16 +3,17 @@ import { nextSeq } from './Counter.js';
 
 export const LOAN_STATUSES = [
   'Query',
-  'ReadyLogin',
   'Hold',
-  'LoginDone',
-  'UnderProcess',
-  'BankFinalized',
+  'Ready Login',
+  'Bank finalized',
+  'Under Bank Workout',
+  'Under Login Query',
+  'Login done - under process',
   'Sanctioned',
   'Disbursed',
   'Rejected',
   'Cancelled',
-  'NotInterested',
+  'Not interested',
 ];
 
 export const PROFESSIONS = ['Salaried', 'Businessman', 'Professional'];
@@ -145,6 +146,7 @@ const loanCaseSchema = new mongoose.Schema(
     disbursedAmount: { type: Number, default: 0 }, // paisa
     roi: { type: Number, default: 0 }, // percent, 2dp -> store as Number e.g. 8.75
     tenure: { type: Number, default: 0 }, // months
+    cibilIssue: { type: String, enum: ['Yes', 'No', ''], default: '' },
 
     // Property
     propertyType: { type: String, default: '' },
@@ -294,6 +296,7 @@ const loanCaseSchema = new mongoose.Schema(
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true }
 );

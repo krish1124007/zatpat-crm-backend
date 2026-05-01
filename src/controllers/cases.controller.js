@@ -28,7 +28,7 @@ export async function downloadOfferLetter(req, res) {
 // Fields the client is allowed to update directly via PATCH.
 const UPDATABLE_FIELDS = new Set([
   'customerName', 'phone', 'email', 'profession',
-  'product', 'loanAmount', 'sanctionedAmount', 'disbursedAmount', 'roi', 'tenure',
+  'product', 'loanAmount', 'sanctionedAmount', 'disbursedAmount', 'roi', 'tenure', 'cibilIssue',
   'bankName', 'bankBranch', 'bankSMName', 'bankSMContact', 'bankSMEmail', 'channelName', 'appId',
   'entryDate', 'followDate', 'loginDate', 'sanctionDate', 'disbursementDate', 'handoverDate',
   'currentStatus', 'confirmationStatus', 'handoverStatus',
@@ -72,6 +72,7 @@ const createSchema = z.object({
   profession: z.enum(PROFESSIONS).optional(),
   product: z.string().optional(),
   loanAmount: z.number().int().nonnegative().optional(),
+  cibilIssue: z.enum(['Yes', 'No', '']).optional(),
   bankName: z.string().optional(),
   channelName: z.string().optional(),
   currentStatus: z.string().optional(),
@@ -149,10 +150,23 @@ export async function listCases(req, res) {
     profession,
     sendFeedbackForm,
     sendReviewLink,
+    isDeleted,
   } = req.query;
 
   const filter = {};
-  if (status) filter.currentStatus = status;
+  if (isDeleted === 'true') {
+    filter.isDeleted = true;
+  } else {
+    filter.isDeleted = { $ne: true };
+  }
+
+  if (status) {
+    if (status.includes(',')) {
+      filter.currentStatus = { $in: status.split(',') };
+    } else {
+      filter.currentStatus = status;
+    }
+  }
   if (channelName && channelName !== 'All') filter.channelName = channelName;
   if (bankName) filter.bankName = bankName;
   if (handledBy) filter.handledBy = handledBy;
@@ -219,6 +233,9 @@ export async function createCase(req, res) {
   if (!parsed.success) {
     return res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
   }
+  if (parsed.data.bankName && !parsed.data.currentStatus) {
+    parsed.data.currentStatus = 'Bank finalized';
+  }
   const doc = await LoanCase.create({
     ...parsed.data,
     createdBy: req.user._id,
@@ -238,6 +255,14 @@ export async function updateCase(req, res) {
   const doc = await LoanCase.findById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Case not found' });
 
+  // Auto-status logic for Bank Finalized
+  if (updates.bankName && !req.body.currentStatus) {
+    const earlyStatuses = ['Query', 'Hold', 'Ready Login'];
+    if (earlyStatuses.includes(doc.currentStatus)) {
+      doc.currentStatus = 'Bank finalized';
+    }
+  }
+
   Object.assign(doc, updates);
   await doc.save();
   // Re-populate for response
@@ -250,9 +275,26 @@ export async function updateCase(req, res) {
 }
 
 export async function deleteCase(req, res) {
-  const doc = await LoanCase.findByIdAndDelete(req.params.id);
+  const doc = await LoanCase.findById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Case not found' });
+  
+  doc.isDeleted = true;
+  doc.updatedBy = req.user._id;
+  await doc.save();
+
   await recordAudit({ req, action: 'delete', resource: 'LoanCase', resourceId: req.params.id });
+  res.json({ ok: true });
+}
+
+export async function restoreCase(req, res) {
+  const doc = await LoanCase.findById(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Case not found' });
+  
+  doc.isDeleted = false;
+  doc.updatedBy = req.user._id;
+  await doc.save();
+
+  await recordAudit({ req, action: 'restore', resource: 'LoanCase', resourceId: req.params.id });
   res.json({ ok: true });
 }
 

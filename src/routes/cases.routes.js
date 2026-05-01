@@ -8,6 +8,7 @@ import {
   createCase,
   updateCase,
   deleteCase,
+  restoreCase,
   addFollowUp,
   addPayment,
   getCaseFacets,
@@ -39,6 +40,7 @@ router.post('/dropdowns/options', ah(createDropdownOption));
 router.get('/:id', ah(getCase));
 router.patch('/:id', ah(updateCase));
 router.delete('/:id', ah(deleteCase));
+router.post('/:id/restore', ah(restoreCase));
 
 router.post('/:id/followups', ah(addFollowUp));
 router.post('/:id/payments/:kind', ah(addPayment));

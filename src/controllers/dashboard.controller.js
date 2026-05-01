@@ -4,7 +4,7 @@ import Expense from '../models/Expense.js';
 import User from '../models/User.js';
 
 const ACTIVE_STATUSES = LOAN_STATUSES.filter(
-  (s) => !['Disbursed', 'Rejected', 'Cancelled', 'NotInterested'].includes(s)
+  (s) => !['Disbursed', 'Rejected', 'Cancelled', 'Not interested'].includes(s)
 );
 
 function startOfDay(d = new Date()) {
@@ -41,18 +41,20 @@ export async function getKpis(_req, res) {
     sanctionedNotDisbursedAgg,
     partPaymentsAgg,
     unpaidReferralPayoutAgg,
+    totalPartners,
+    totalInvoices,
   ] = await Promise.all([
-    LoanCase.countDocuments({}),
-    LoanCase.countDocuments({ currentStatus: { $in: ACTIVE_STATUSES } }),
+    LoanCase.countDocuments({ isDeleted: { $ne: true } }),
+    LoanCase.countDocuments({ currentStatus: { $in: ACTIVE_STATUSES }, isDeleted: { $ne: true } }),
     LoanCase.aggregate([
-      { $match: { currentStatus: 'Disbursed', disbursementDate: { $gte: monthStart, $lt: nextMonthStart } } },
+      { $match: { currentStatus: 'Disbursed', disbursementDate: { $gte: monthStart, $lt: nextMonthStart }, isDeleted: { $ne: true } } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$disbursedAmount' } } },
     ]),
     LoanCase.aggregate([
-      { $match: { pendingPaymentAmount: { $gt: 0 } } },
+      { $match: { pendingPaymentAmount: { $gt: 0 }, isDeleted: { $ne: true } } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$pendingPaymentAmount' } } },
     ]),
-    LoanCase.countDocuments({ 'followUps.nextFollowUpDate': { $gte: todayStart, $lt: tomorrowStart } }),
+    LoanCase.countDocuments({ 'followUps.nextFollowUpDate': { $gte: todayStart, $lt: tomorrowStart }, isDeleted: { $ne: true } }),
     Invoice.aggregate([
       { $match: { status: 'Paid', 'payment.paidDate': { $gte: monthStart, $lt: nextMonthStart } } },
       { $group: { _id: null, count: { $sum: 1 }, commission: { $sum: '$amount' }, totalWithGst: { $sum: '$totalAmount' } } },
@@ -61,28 +63,30 @@ export async function getKpis(_req, res) {
       { $match: { date: { $gte: monthStart, $lt: nextMonthStart } } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$amount' } } },
     ]),
-    LoanCase.countDocuments({ createdAt: { $gte: monthStart, $lt: nextMonthStart } }),
+    LoanCase.countDocuments({ createdAt: { $gte: monthStart, $lt: nextMonthStart }, isDeleted: { $ne: true } }),
     LoanCase.aggregate([
-      { $match: { currentStatus: 'Disbursed' } },
+      { $match: { currentStatus: 'Disbursed', isDeleted: { $ne: true } } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$disbursedAmount' } } },
     ]),
     LoanCase.aggregate([
-      { $match: { loanAmount: { $gt: 0 } } },
+      { $match: { loanAmount: { $gt: 0 }, isDeleted: { $ne: true } } },
       { $group: { _id: null, avg: { $avg: '$loanAmount' } } },
     ]),
     LoanCase.aggregate([
-      { $match: { currentStatus: 'Sanctioned' } },
+      { $match: { currentStatus: 'Sanctioned', isDeleted: { $ne: true } } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$sanctionedAmount' } } },
     ]),
     LoanCase.aggregate([
-      { $match: { 'partPayments.0': { $exists: true } } },
+      { $match: { 'partPayments.0': { $exists: true }, isDeleted: { $ne: true } } },
       { $project: { sumOfParts: { $sum: '$partPayments.amount' } } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$sumOfParts' } } }
     ]),
     LoanCase.aggregate([
-      { $match: { 'referralPayout.status': { $in: ['Unpaid', '', null] }, 'referralPayout.amount': { $gt: 0 } } },
+      { $match: { 'referralPayout.status': { $in: ['Unpaid', '', null] }, 'referralPayout.amount': { $gt: 0 }, isDeleted: { $ne: true } } },
       { $group: { _id: null, count: { $sum: 1 }, amount: { $sum: '$referralPayout.amount' } } }
     ]),
+    import('../models/Partner.js').then(m => m.default.countDocuments({})),
+    Invoice.countDocuments({}),
   ]);
 
   const monthDisbursed = monthDisbursedAgg[0] || { count: 0, amount: 0 };
@@ -112,6 +116,8 @@ export async function getKpis(_req, res) {
     monthNetIncome: (monthInvoice.commission || 0) - (monthExpense.amount || 0),
     partPayments,
     unpaidReferralPayout,
+    totalPartners,
+    totalInvoices,
   });
 }
 
@@ -281,10 +287,7 @@ export async function pipelineSummary(_req, res) {
   const statusMap = Object.fromEntries(statusAgg.map((r) => [r._id, r]));
 
   // Pipeline stages in order
-  const pipeline = [
-    'Query', 'ReadyLogin', 'Hold', 'LoginDone', 'UnderProcess',
-    'BankFinalized', 'Sanctioned', 'Disbursed',
-  ].map((s) => ({
+  const pipeline = LOAN_STATUSES.slice(0, 9).map((s) => ({
     status: s,
     count: statusMap[s]?.count || 0,
     totalLoan: statusMap[s]?.totalLoan || 0,
@@ -296,7 +299,7 @@ export async function pipelineSummary(_req, res) {
     pendingInsurance,
     rejected: statusMap['Rejected']?.count || 0,
     cancelled: statusMap['Cancelled']?.count || 0,
-    notInterested: statusMap['NotInterested']?.count || 0,
+    notInterested: statusMap['Not interested']?.count || 0,
   });
 }
 
