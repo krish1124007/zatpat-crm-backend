@@ -20,6 +20,7 @@ import {
   getDropdownOptions,
   createDropdownOption,
   getAllDropdownOptions,
+  deleteDropdownOption,
 } from '../controllers/cases.controller.js';
 
 const router = Router();
@@ -36,6 +37,7 @@ router.get('/reference-partners-autocomplete', ah(referencePartnersAutocomplete)
 router.get('/dropdowns/all', ah(getAllDropdownOptions));
 router.get('/dropdowns/options', ah(getDropdownOptions));
 router.post('/dropdowns/options', ah(createDropdownOption));
+router.delete('/dropdowns/options/:optionId', ah(deleteDropdownOption));
 
 router.get('/:id', ah(getCase));
 router.patch('/:id', ah(updateCase));

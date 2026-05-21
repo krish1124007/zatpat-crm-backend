@@ -33,6 +33,8 @@ export const PROPERTY_TYPES = [
 
 export const DISBURSEMENT_TYPES = ['Full', 'Part'];
 
+export const TRANSACTION_TYPES = ['Builder Purchase', 'Resale'];
+
 export const POST_DISBURSEMENT_STAGES = [
   'HandoverPending',
   'HandoverDone',
@@ -147,6 +149,12 @@ const loanCaseSchema = new mongoose.Schema(
     roi: { type: Number, default: 0 }, // percent, 2dp -> store as Number e.g. 8.75
     tenure: { type: Number, default: 0 }, // months
     cibilIssue: { type: String, enum: ['Yes', 'No', ''], default: '' },
+
+    // Transaction Type
+    transactionType: { type: String, enum: [...TRANSACTION_TYPES, ''], default: '' },
+
+    // Construction Stage (percentage 0-100)
+    constructionStage: { type: Number, default: null },
 
     // Property
     propertyType: { type: String, default: '' },

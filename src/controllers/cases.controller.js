@@ -7,6 +7,7 @@ import LoanCase, {
   DISBURSEMENT_TYPES,
   POST_DISBURSEMENT_STAGES,
   FOLLOWUP_TYPES,
+  TRANSACTION_TYPES,
 } from '../models/LoanCase.js';
 import DropdownOption, { DROPDOWN_TYPES } from '../models/DropdownOption.js';
 import { recordAudit } from '../middleware/auditLog.js';
@@ -54,7 +55,9 @@ const UPDATABLE_FIELDS = new Set([
   // Communication
   'sendFeedbackForm', 'sendReviewLink',
   // Referral Payout
-  'referralPayout'
+  'referralPayout',
+  // New Loan Detail fields
+  'transactionType', 'constructionStage',
 ]);
 
 function pickUpdatable(body) {
@@ -116,6 +119,8 @@ const createSchema = z.object({
   })).optional(),
   sendFeedbackForm: z.enum(['', 'Done', 'Pending']).optional(),
   sendReviewLink: z.enum(['', 'Done', 'Pending']).optional(),
+  transactionType: z.enum([...TRANSACTION_TYPES, '']).optional(),
+  constructionStage: z.number().min(0).max(100).nullable().optional(),
   referralPayout: z.object({
     percentage: z.number().optional(),
     amount: z.number().optional(),
@@ -552,12 +557,34 @@ export async function getAllDropdownOptions(req, res) {
   for (const type of DROPDOWN_TYPES) {
     const options = await DropdownOption.find({ type, isActive: true })
       .sort({ 'metadata.sortOrder': 1, label: 1 })
-      .select('label value')
+      .select('label value _id')
       .lean();
     
-    result[type] = options.map(o => ({ label: o.label, value: o.value }));
+    result[type] = options.map(o => ({ label: o.label, value: o.value, _id: o._id }));
   }
 
   res.json(result);
+}
+
+// Delete (deactivate) a dropdown option by its ID
+export async function deleteDropdownOption(req, res) {
+  const { optionId } = req.params;
+
+  const option = await DropdownOption.findById(optionId);
+  if (!option) return res.status(404).json({ error: 'Option not found' });
+
+  // Soft-delete: mark isActive = false so it doesn't appear in dropdowns
+  option.isActive = false;
+  await option.save();
+
+  await recordAudit({
+    action: 'DELETE_DROPDOWN_OPTION',
+    userId: req.user._id,
+    resourceType: 'DropdownOption',
+    resourceId: option._id.toString(),
+    details: { type: option.type, label: option.label, value: option.value },
+  });
+
+  res.json({ ok: true });
 }
 
