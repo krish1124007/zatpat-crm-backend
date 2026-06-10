@@ -8,9 +8,10 @@ import LoanCase, {
   POST_DISBURSEMENT_STAGES,
   FOLLOWUP_TYPES,
   TRANSACTION_TYPES,
+  LOAN_TYPES,
 } from '../models/LoanCase.js';
 import DropdownOption, { DROPDOWN_TYPES } from '../models/DropdownOption.js';
-import { recordAudit } from '../middleware/auditLog.js';
+import { recordAudit, recordActivity } from '../middleware/auditLog.js';
 import { streamExpenseSheetPDF, streamOfferLetterPDF } from '../services/casePdfs.js';
 
 export async function downloadExpenseSheet(req, res) {
@@ -31,7 +32,8 @@ const UPDATABLE_FIELDS = new Set([
   'customerName', 'phone', 'email', 'profession',
   'product', 'loanAmount', 'sanctionedAmount', 'disbursedAmount', 'roi', 'tenure', 'cibilIssue',
   'bankName', 'bankBranch', 'bankSMName', 'bankSMContact', 'bankSMEmail', 'channelName', 'appId',
-  'entryDate', 'followDate', 'loginDate', 'sanctionDate', 'disbursementDate', 'handoverDate',
+  // NOTE: entryDate is intentionally NOT updatable — first-entry date is immutable.
+  'followDate', 'loginDate', 'sanctionDate', 'disbursementDate', 'handoverDate',
   'currentStatus', 'confirmationStatus', 'handoverStatus',
   'documents',
   'legalAdvocateName', 'valuationAmount', 'technicalDetails',
@@ -58,6 +60,9 @@ const UPDATABLE_FIELDS = new Set([
   'referralPayout',
   // New Loan Detail fields
   'transactionType', 'constructionStage',
+  // Lead / Profile fields
+  'cibilRemark', 'profileDetails', 'obligation', 'propertyDetails',
+  'loanRequiredAmount', 'loanType', 'specialRemark',
 ]);
 
 function pickUpdatable(body) {
@@ -76,6 +81,23 @@ const createSchema = z.object({
   product: z.string().optional(),
   loanAmount: z.number().int().nonnegative().optional(),
   cibilIssue: z.enum(['Yes', 'No', '']).optional(),
+  cibilRemark: z.string().optional(),
+  // Lead / profile
+  profileDetails: z.object({
+    companyName: z.string().optional(),
+    grossSalary: z.number().int().nonnegative().optional(),
+    netSalary: z.number().int().nonnegative().optional(),
+    itr: z.number().int().nonnegative().optional(),
+    turnover: z.number().int().nonnegative().optional(),
+  }).optional(),
+  obligation: z.number().int().nonnegative().optional(),
+  propertyDetails: z.object({
+    marketValue: z.number().int().nonnegative().optional(),
+    saleDeedValue: z.number().int().nonnegative().optional(),
+  }).optional(),
+  loanRequiredAmount: z.number().int().nonnegative().optional(),
+  loanType: z.string().optional(),
+  specialRemark: z.string().optional(),
   bankName: z.string().optional(),
   channelName: z.string().optional(),
   currentStatus: z.string().optional(),
@@ -165,23 +187,23 @@ export async function listCases(req, res) {
     filter.isDeleted = { $ne: true };
   }
 
-  if (status) {
-    if (status.includes(',')) {
-      filter.currentStatus = { $in: status.split(',') };
-    } else {
-      filter.currentStatus = status;
-    }
-  }
-  if (channelName && channelName !== 'All') filter.channelName = channelName;
-  if (bankName) filter.bankName = bankName;
-  if (handledBy) filter.handledBy = handledBy;
-  if (postDisbursementStage) filter.postDisbursementStage = postDisbursementStage;
-  if (propertyType) filter.propertyType = propertyType;
-  if (disbursementType) filter.disbursementType = disbursementType;
+  // Multi-select aware: a comma-separated value becomes an $in query.
+  const multi = (val) => (String(val).includes(',') ? { $in: String(val).split(',').filter(Boolean) } : val);
+
+  if (status) filter.currentStatus = multi(status);
+  if (channelName && channelName !== 'All') filter.channelName = multi(channelName);
+  if (bankName) filter.bankName = multi(bankName);
+  if (handledBy) filter.handledBy = multi(handledBy);
+  if (postDisbursementStage) filter.postDisbursementStage = multi(postDisbursementStage);
+  if (propertyType) filter.propertyType = multi(propertyType);
+  if (req.query.product) filter.product = multi(req.query.product);
+  if (req.query.loanType) filter.loanType = multi(req.query.loanType);
+  if (disbursementType) filter.disbursementType = multi(disbursementType);
   if (bankerConfirmation) filter['bankerDetails.bankerConfirmation'] = bankerConfirmation;
   if (handoverConfirmation) filter['bankerDetails.handoverConfirmation'] = handoverConfirmation;
   if (insuranceStatus) filter.insuranceStatus = insuranceStatus;
-  if (profession) filter.profession = profession;
+  if (profession) filter.profession = multi(profession);
+  if (req.query.cibilIssue) filter.cibilIssue = req.query.cibilIssue;
   if (sendFeedbackForm) filter.sendFeedbackForm = sendFeedbackForm;
   if (sendReviewLink) filter.sendReviewLink = sendReviewLink;
   if (pendingPayment === 'true') filter.pendingPaymentAmount = { $gt: 0 };
@@ -247,6 +269,10 @@ export async function createCase(req, res) {
     updatedBy: req.user._id,
   });
   await recordAudit({ req, action: 'create', resource: 'LoanCase', resourceId: doc.id });
+  await recordActivity({
+    req, action: 'create', caseDoc: doc,
+    message: `added new case for ${doc.customerName} (#${doc.srNo})`,
+  });
   res.status(201).json({ case: doc });
 }
 
@@ -259,6 +285,8 @@ export async function updateCase(req, res) {
 
   const doc = await LoanCase.findById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Case not found' });
+
+  const prevStatus = doc.currentStatus;
 
   // Auto-status logic for Bank Finalized
   if (updates.bankName && !req.body.currentStatus) {
@@ -276,6 +304,13 @@ export async function updateCase(req, res) {
     req, action: 'update', resource: 'LoanCase', resourceId: doc.id,
     meta: { fields: Object.keys(updates) },
   });
+  if (doc.currentStatus !== prevStatus) {
+    await recordActivity({
+      req, action: 'status_change', caseDoc: doc,
+      message: `changed status from ${prevStatus} to ${doc.currentStatus} for ${doc.customerName} (#${doc.srNo})`,
+      meta: { from: prevStatus, to: doc.currentStatus },
+    });
+  }
   res.json({ case: doc });
 }
 
@@ -320,6 +355,10 @@ export async function addFollowUp(req, res) {
   if (!doc) return res.status(404).json({ error: 'Case not found' });
   doc.followUps.push({ ...parsed.data, updatedBy: req.user._id });
   await doc.save();
+  await recordActivity({
+    req, action: 'followup', caseDoc: doc,
+    message: `added a new follow-up remark for ${doc.customerName} (#${doc.srNo})`,
+  });
   res.status(201).json({ case: doc });
 }
 
@@ -394,6 +433,7 @@ export async function getCaseFacets(_req, res) {
     statuses: LOAN_STATUSES,
     products: PRODUCTS,
     professions: PROFESSIONS,
+    loanTypes: LOAN_TYPES,
     propertyTypes: PROPERTY_TYPES,
     disbursementTypes: DISBURSEMENT_TYPES,
     postDisbursementStages: POST_DISBURSEMENT_STAGES,
@@ -403,11 +443,21 @@ export async function getCaseFacets(_req, res) {
 
 // Reference partners: aggregate cases by referenceName to show all unique references
 export async function listReferencePartners(req, res) {
-  const { search } = req.query;
+  const { search, dateFrom, dateTo } = req.query;
   const match = { referenceName: { $nin: [null, ''] } };
   if (search) {
     const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     match.$or = [{ referenceName: rx }, { referencePhone: rx }];
+  }
+  // Date-wise filtering: only include cases created in the given window.
+  if (dateFrom || dateTo) {
+    match.createdAt = {};
+    if (dateFrom) match.createdAt.$gte = new Date(dateFrom);
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      match.createdAt.$lte = end;
+    }
   }
 
   const items = await LoanCase.aggregate([
@@ -438,6 +488,7 @@ export async function listReferencePartners(req, res) {
             loanAmount: '$loanAmount',
             disbursedAmount: '$disbursedAmount',
             referralPayout: '$referralPayout',
+            createdAt: '$createdAt',
           },
         },
       },

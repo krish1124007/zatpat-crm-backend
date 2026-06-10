@@ -2,6 +2,7 @@ import LoanCase, { LOAN_STATUSES } from '../models/LoanCase.js';
 import Invoice from '../models/Invoice.js';
 import Expense from '../models/Expense.js';
 import User from '../models/User.js';
+import Activity from '../models/Activity.js';
 
 const ACTIVE_STATUSES = LOAN_STATUSES.filter(
   (s) => !['Disbursed', 'Rejected', 'Cancelled', 'Not interested'].includes(s)
@@ -338,4 +339,105 @@ export async function allDistributions(_req, res) {
     sendFeedbackForm: feedbackAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
     sendReviewLink: reviewAgg.map(r => ({ label: r._id || 'Empty', count: r.count })),
   });
+}
+
+// ── Conversion Ratios ──
+// Login → Sanction and Sanction → Disburse, both for the current month and all-time.
+export async function conversionRatios(_req, res) {
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const nextMonthStart = new Date(monthStart);
+  nextMonthStart.setMonth(nextMonthStart.getMonth() + 1);
+
+  const inMonth = (field) => ({ [field]: { $gte: monthStart, $lt: nextMonthStart }, isDeleted: { $ne: true } });
+  const ever = (field) => ({ [field]: { $ne: null }, isDeleted: { $ne: true } });
+
+  const [
+    monthLogin, monthSanction, monthDisburse,
+    everLogin, everSanction, everDisburse,
+  ] = await Promise.all([
+    LoanCase.countDocuments(inMonth('loginDate')),
+    LoanCase.countDocuments(inMonth('sanctionDate')),
+    LoanCase.countDocuments(inMonth('disbursementDate')),
+    LoanCase.countDocuments(ever('loginDate')),
+    LoanCase.countDocuments(ever('sanctionDate')),
+    LoanCase.countDocuments(ever('disbursementDate')),
+  ]);
+
+  const pct = (num, den) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+
+  res.json({
+    monthly: {
+      login: monthLogin,
+      sanction: monthSanction,
+      disburse: monthDisburse,
+      loginToSanction: pct(monthSanction, monthLogin),
+      sanctionToDisburse: pct(monthDisburse, monthSanction),
+    },
+    allTime: {
+      login: everLogin,
+      sanction: everSanction,
+      disburse: everDisburse,
+      loginToSanction: pct(everSanction, everLogin),
+      sanctionToDisburse: pct(everDisburse, everSanction),
+    },
+  });
+}
+
+// ── Today's Work ──
+// Every case with a pending follow-up: due today, or overdue ("Due since N days").
+export async function todaysWork(_req, res) {
+  const todayEnd = startOfDay();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const cases = await LoanCase.find({
+    isDeleted: { $ne: true },
+    currentStatus: { $nin: ['Disbursed', 'Rejected', 'Cancelled', 'Not interested'] },
+    'followUps.nextFollowUpDate': { $lte: todayEnd },
+  })
+    .select('srNo customerName phone bankName currentStatus handledBy followUps')
+    .populate('handledBy', 'name')
+    .lean();
+
+  const now = new Date();
+  const startToday = startOfDay(now).getTime();
+  const items = [];
+
+  for (const c of cases) {
+    // The most recent follow-up that still has a next-follow-up date.
+    const pending = (c.followUps || [])
+      .filter((f) => f.nextFollowUpDate)
+      .sort((a, b) => new Date(b.nextFollowUpDate) - new Date(a.nextFollowUpDate))[0];
+    if (!pending) continue;
+    const due = new Date(pending.nextFollowUpDate);
+    if (due > todayEnd) continue;
+    const dueDay = startOfDay(due).getTime();
+    const daysOverdue = Math.max(0, Math.round((startToday - dueDay) / 86400000));
+    items.push({
+      _id: c._id,
+      srNo: c.srNo,
+      customerName: c.customerName,
+      phone: c.phone,
+      bankName: c.bankName,
+      currentStatus: c.currentStatus,
+      handledBy: c.handledBy,
+      nextFollowUpDate: pending.nextFollowUpDate,
+      nextFollowUpDetails: pending.nextFollowUpDetails || pending.details || '',
+      daysOverdue,
+    });
+  }
+
+  items.sort((a, b) => b.daysOverdue - a.daysOverdue);
+  res.json({
+    items,
+    todayCount: items.filter((i) => i.daysOverdue === 0).length,
+    overdueCount: items.filter((i) => i.daysOverdue > 0).length,
+  });
+}
+
+// ── Live Activity Feed ──
+export async function activities(req, res) {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
+  const items = await Activity.find({}).sort({ createdAt: -1 }).limit(limit).lean();
+  res.json({ items });
 }

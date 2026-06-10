@@ -8,6 +8,8 @@ export const DROPDOWN_TYPES = [
   'provisionalBank',
   'product',
   'status',
+  'profession',
+  'loanType',
 ];
 
 const dropdownOptionSchema = new mongoose.Schema(

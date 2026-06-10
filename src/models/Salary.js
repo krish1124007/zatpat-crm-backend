@@ -19,6 +19,11 @@ const salarySchema = new mongoose.Schema(
     paymentMode: { type: String, default: 'Bank' },
     notes: { type: String, default: '' },
 
+    // Uploaded salary report/slip (Excel / Word / PDF). Stores path + original name.
+    reportFile: { type: String, default: '' },
+    reportFileName: { type: String, default: '' },
+    reportUploadedAt: { type: Date },
+
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

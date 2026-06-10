@@ -98,3 +98,16 @@ export async function listEmployees(_req, res) {
   const items = await User.find({ isActive: true }).select('name email role').sort({ name: 1 }).lean();
   res.json({ items });
 }
+
+// Upload a salary report/slip (Excel / Word / PDF) for a salary record.
+export async function uploadSalaryReport(req, res) {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const doc = await Salary.findById(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Salary record not found' });
+  doc.reportFile = `/uploads/${req.file.filename}`;
+  doc.reportFileName = req.file.originalname;
+  doc.reportUploadedAt = new Date();
+  await doc.save();
+  await recordAudit({ req, action: 'upload', resource: 'Salary', resourceId: doc.id });
+  res.json({ salary: doc });
+}

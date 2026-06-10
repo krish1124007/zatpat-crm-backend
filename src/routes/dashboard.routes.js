@@ -12,6 +12,9 @@ import {
   productBreakdown,
   pipelineSummary,
   allDistributions,
+  conversionRatios,
+  todaysWork,
+  activities,
 } from '../controllers/dashboard.controller.js';
 
 const router = Router();
@@ -27,5 +30,8 @@ router.get('/handler-performance', ah(handlerPerformance));
 router.get('/product-breakdown', ah(productBreakdown));
 router.get('/pipeline-summary', ah(pipelineSummary));
 router.get('/all-distributions', ah(allDistributions));
+router.get('/conversion-ratios', ah(conversionRatios));
+router.get('/todays-work', ah(todaysWork));
+router.get('/activities', ah(activities));
 
 export default router;

@@ -16,7 +16,16 @@ export const LOAN_STATUSES = [
   'Not interested',
 ];
 
-export const PROFESSIONS = ['Salaried', 'Businessman', 'Professional'];
+export const PROFESSIONS = [
+  'Salaried',
+  'Self Employed',
+  'Professional',
+  'Businessman',
+  'Mix',
+  'Other',
+];
+
+export const LOAN_TYPES = ['HL', 'LAP', 'BT', 'TOPUP', 'PL', 'BL', 'Mortgage', 'Other'];
 export const PRODUCTS = ['HL', 'LAP', 'BT', 'TOPUP', 'ML', 'CommercialPurchase', 'Other'];
 
 export const PROPERTY_TYPES = [
@@ -126,6 +135,16 @@ const offerSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Tracks the exact date/time a case first entered each status — immutable history.
+const statusHistorySchema = new mongoose.Schema(
+  {
+    status: { type: String, default: '' },
+    enteredAt: { type: Date, default: Date.now },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  },
+  { _id: true }
+);
+
 const loanCaseSchema = new mongoose.Schema(
   {
     srNo: { type: Number, unique: true, index: true },
@@ -149,6 +168,40 @@ const loanCaseSchema = new mongoose.Schema(
     roi: { type: Number, default: 0 }, // percent, 2dp -> store as Number e.g. 8.75
     tenure: { type: Number, default: 0 }, // months
     cibilIssue: { type: String, enum: ['Yes', 'No', ''], default: '' },
+    cibilRemark: { type: String, default: '' },
+
+    // ── Lead / Profile Details ──
+    // Income profile. `profession` (above) holds Salaried / Self Employed / Professional / Mix / Other.
+    profileDetails: {
+      companyName: { type: String, default: '' },      // Salaried
+      grossSalary: { type: Number, default: 0 },         // paisa, per month — Salaried
+      netSalary: { type: Number, default: 0 },           // paisa, per month — Salaried
+      itr: { type: Number, default: 0 },                 // paisa — Self Employed / Professional
+      turnover: { type: Number, default: 0 },            // paisa — Self Employed / Professional
+    },
+
+    // Existing monthly obligations (EMIs etc.)
+    obligation: { type: Number, default: 0 }, // paisa
+
+    // Property valuation details (for the requested loan)
+    propertyDetails: {
+      marketValue: { type: Number, default: 0 },   // paisa
+      saleDeedValue: { type: Number, default: 0 },  // paisa
+      // transactionType (Builder Purchase / Resale) and constructionStage are stored below.
+    },
+
+    // Loan required (amount in paisa; words generated/shown on the client)
+    loanRequiredAmount: { type: Number, default: 0 }, // paisa
+    loanType: { type: String, default: '' },
+
+    // Special remark captured at lead time (separate from internal specialNotes)
+    specialRemark: { type: String, default: '' },
+
+    // Timestamp the bank-sheet (bank details) was last updated — auto-maintained.
+    bankSheetUpdatedAt: { type: Date },
+
+    // Immutable per-status entry timestamps
+    statusHistory: { type: [statusHistorySchema], default: [] },
 
     // Transaction Type
     transactionType: { type: String, enum: [...TRANSACTION_TYPES, ''], default: '' },
@@ -314,6 +367,50 @@ loanCaseSchema.pre('validate', async function assignSrNo(next) {
   if (this.isNew && this.srNo == null) {
     this.srNo = await nextSeq('loanCase');
   }
+  next();
+});
+
+// Track status history + auto-stamp per-status dates. Entry timestamps are
+// immutable: a new row is appended each time the status changes, and we never
+// rewrite the original first-entry date.
+const BANK_SHEET_FIELDS = [
+  'bankName', 'bankBranch', 'bankSMName', 'bankSMContact', 'bankSMEmail',
+  'bankUserId', 'bankPassword', 'provisionalBanks', 'bankerDetails',
+];
+
+loanCaseSchema.pre('save', function trackStatusAndBankSheet(next) {
+  const now = new Date();
+
+  if (this.isNew) {
+    if (!this.statusHistory || this.statusHistory.length === 0) {
+      this.statusHistory = [{
+        status: this.currentStatus,
+        enteredAt: this.entryDate || now,
+        changedBy: this.createdBy,
+      }];
+    }
+  } else if (this.isModified('currentStatus')) {
+    this.statusHistory.push({
+      status: this.currentStatus,
+      enteredAt: now,
+      changedBy: this.updatedBy,
+    });
+    // Auto-stamp the well-known milestone dates the first time we reach them.
+    if (this.currentStatus === 'Sanctioned' && !this.sanctionDate) this.sanctionDate = now;
+    if (this.currentStatus === 'Disbursed' && !this.disbursementDate) this.disbursementDate = now;
+    if (/login/i.test(this.currentStatus) && !this.loginDate) this.loginDate = now;
+  }
+
+  // Keep the original entry date immutable once the document exists.
+  if (!this.isNew && this.isModified('entryDate')) {
+    this.entryDate = this.statusHistory?.[0]?.enteredAt || this.entryDate;
+  }
+
+  // Bank-sheet last-updated timestamp.
+  if (this.isNew || BANK_SHEET_FIELDS.some((f) => this.isModified(f))) {
+    this.bankSheetUpdatedAt = now;
+  }
+
   next();
 });
 
