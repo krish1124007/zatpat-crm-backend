@@ -385,25 +385,48 @@ export async function conversionRatios(_req, res) {
 }
 
 // ── Today's Work ──
-// Every case with a pending follow-up: due today, or overdue ("Due since N days").
+// Every case with a pending follow-up: due today, or overdue ("Due since N days"), or done today.
 export async function todaysWork(_req, res) {
+  const startTodayTime = startOfDay().getTime();
   const todayEnd = startOfDay();
   todayEnd.setHours(23, 59, 59, 999);
 
   const cases = await LoanCase.find({
     isDeleted: { $ne: true },
     currentStatus: { $nin: ['Disbursed', 'Rejected', 'Cancelled', 'Not interested'] },
-    'followUps.nextFollowUpDate': { $lte: todayEnd },
+    $or: [
+      { 'followUps.nextFollowUpDate': { $lte: todayEnd } },
+      { 'followUps.date': { $gte: new Date(startTodayTime), $lte: todayEnd } }
+    ]
   })
     .select('srNo customerName phone bankName currentStatus handledBy followUps')
     .populate('handledBy', 'name')
     .lean();
 
-  const now = new Date();
-  const startToday = startOfDay(now).getTime();
   const items = [];
 
   for (const c of cases) {
+    const addedToday = (c.followUps || []).find(f => {
+      const fd = new Date(f.date).getTime();
+      return fd >= startTodayTime && fd <= todayEnd.getTime();
+    });
+
+    if (addedToday) {
+      items.push({
+        _id: c._id,
+        srNo: c.srNo,
+        customerName: c.customerName,
+        phone: c.phone,
+        bankName: c.bankName,
+        currentStatus: c.currentStatus,
+        handledBy: c.handledBy,
+        nextFollowUpDate: addedToday.nextFollowUpDate || '',
+        nextFollowUpDetails: addedToday.details || '',
+        daysOverdue: -1,
+      });
+      continue;
+    }
+
     // The most recent follow-up that still has a next-follow-up date.
     const pending = (c.followUps || [])
       .filter((f) => f.nextFollowUpDate)
@@ -412,7 +435,7 @@ export async function todaysWork(_req, res) {
     const due = new Date(pending.nextFollowUpDate);
     if (due > todayEnd) continue;
     const dueDay = startOfDay(due).getTime();
-    const daysOverdue = Math.max(0, Math.round((startToday - dueDay) / 86400000));
+    const daysOverdue = Math.max(0, Math.round((startTodayTime - dueDay) / 86400000));
     items.push({
       _id: c._id,
       srNo: c.srNo,
@@ -432,6 +455,7 @@ export async function todaysWork(_req, res) {
     items,
     todayCount: items.filter((i) => i.daysOverdue === 0).length,
     overdueCount: items.filter((i) => i.daysOverdue > 0).length,
+    doneTodayCount: items.filter((i) => i.daysOverdue === -1).length,
   });
 }
 

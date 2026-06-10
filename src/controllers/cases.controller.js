@@ -30,7 +30,7 @@ export async function downloadOfferLetter(req, res) {
 // Fields the client is allowed to update directly via PATCH.
 const UPDATABLE_FIELDS = new Set([
   'customerName', 'phone', 'email', 'profession',
-  'product', 'loanAmount', 'sanctionedAmount', 'disbursedAmount', 'roi', 'tenure', 'cibilIssue',
+  'product', 'loanAmount', 'loanAmountDisplay', 'sanctionedAmount', 'disbursedAmount', 'roi', 'tenure', 'cibilIssue',
   'bankName', 'bankBranch', 'bankSMName', 'bankSMContact', 'bankSMEmail', 'channelName', 'appId',
   // NOTE: entryDate is intentionally NOT updatable — first-entry date is immutable.
   'followDate', 'loginDate', 'sanctionDate', 'disbursementDate', 'handoverDate',
@@ -80,6 +80,7 @@ const createSchema = z.object({
   profession: z.enum(PROFESSIONS).optional(),
   product: z.string().optional(),
   loanAmount: z.number().int().nonnegative().optional(),
+  loanAmountDisplay: z.string().optional(),
   cibilIssue: z.enum(['Yes', 'No', '']).optional(),
   cibilRemark: z.string().optional(),
   // Lead / profile
@@ -296,6 +297,16 @@ export async function updateCase(req, res) {
     }
   }
 
+  // Conversion Ratios Auto-Dates
+  const targetStatus = updates.currentStatus || doc.currentStatus;
+  if (targetStatus === 'Login done - under process' && !doc.loginDate && !updates.loginDate) {
+    updates.loginDate = new Date();
+  } else if (targetStatus === 'Sanctioned' && !doc.sanctionDate && !updates.sanctionDate) {
+    updates.sanctionDate = new Date();
+  } else if (targetStatus === 'Disbursed' && !doc.disbursementDate && !updates.disbursementDate) {
+    updates.disbursementDate = new Date();
+  }
+
   Object.assign(doc, updates);
   await doc.save();
   // Re-populate for response
@@ -307,7 +318,7 @@ export async function updateCase(req, res) {
   if (doc.currentStatus !== prevStatus) {
     await recordActivity({
       req, action: 'status_change', caseDoc: doc,
-      message: `changed status from ${prevStatus} to ${doc.currentStatus} for ${doc.customerName} (#${doc.srNo})`,
+      message: `changed status from ${prevStatus} to ${doc.currentStatus} in ${doc.customerName} client`,
       meta: { from: prevStatus, to: doc.currentStatus },
     });
   }
@@ -357,7 +368,7 @@ export async function addFollowUp(req, res) {
   await doc.save();
   await recordActivity({
     req, action: 'followup', caseDoc: doc,
-    message: `added a new follow-up remark for ${doc.customerName} (#${doc.srNo})`,
+    message: `added new follow up remark in ${doc.customerName} client`,
   });
   res.status(201).json({ case: doc });
 }

@@ -163,6 +163,7 @@ const loanCaseSchema = new mongoose.Schema(
     // Loan
     product: { type: String, default: 'HL' },
     loanAmount: { type: Number, default: 0 }, // paisa
+    loanAmountDisplay: { type: String, default: '' }, // e.g. "10 Lakhs"
     sanctionedAmount: { type: Number, default: 0 }, // paisa
     disbursedAmount: { type: Number, default: 0 }, // paisa
     roi: { type: Number, default: 0 }, // percent, 2dp -> store as Number e.g. 8.75
