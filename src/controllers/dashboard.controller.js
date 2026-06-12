@@ -125,6 +125,7 @@ export async function getKpis(_req, res) {
 // ── Status Breakdown ──
 export async function statusBreakdown(_req, res) {
   const agg = await LoanCase.aggregate([
+    { $match: { isDeleted: { $ne: true } } },
     { $group: { _id: '$currentStatus', count: { $sum: 1 }, totalAmount: { $sum: '$loanAmount' } } },
   ]);
   const map = Object.fromEntries(agg.map((r) => [r._id, r]));
