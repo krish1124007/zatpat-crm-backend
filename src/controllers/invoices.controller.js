@@ -51,7 +51,7 @@ async function buildSnapshot(partnerId, caseId) {
 }
 
 export async function listInvoices(req, res) {
-  const { status, partner, financialYear, dateFrom, dateTo, page = 1, limit = 50 } = req.query;
+  const { status, partner, financialYear, dateFrom, dateTo } = req.query;
   const filter = {};
   if (status) filter.status = status;
   if (partner) filter.partner = partner;
@@ -61,20 +61,61 @@ export async function listInvoices(req, res) {
     if (dateFrom) filter.date.$gte = new Date(dateFrom);
     if (dateTo) filter.date.$lte = new Date(dateTo);
   }
-  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-  const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
 
-  const [items, total] = await Promise.all([
-    Invoice.find(filter)
-      .sort({ date: -1 })
-      .skip((pageNum - 1) * limitNum)
-      .limit(limitNum)
-      .populate('partner', 'name gstNumber email phone')
-      .populate('loanCase', 'srNo customerName bankName')
-      .lean(),
-    Invoice.countDocuments(filter),
-  ]);
-  res.json({ items, total, page: pageNum, limit: limitNum });
+  // Formal partner tax-invoices (Invoice collection).
+  const invoiceDocs = await Invoice.find(filter)
+    .sort({ date: -1 })
+    .populate('partner', 'name gstNumber email phone')
+    .populate('loanCase', 'srNo customerName bankName')
+    .lean();
+
+  // Plus invoices entered INSIDE cases (paymentReceived entries that carry an
+  // invoice number/amount). These are read-only here and tagged source: 'case'.
+  // Skipped when filtering by a specific partner (case invoices have no partner).
+  const caseRows = [];
+  if (!partner && !financialYear) {
+    const cases = await LoanCase.find({
+      isDeleted: { $ne: true },
+      'paymentReceived.0': { $exists: true },
+    })
+      .select('srNo customerName bankName referenceName createdAt paymentReceived')
+      .lean();
+
+    for (const c of cases) {
+      for (const p of c.paymentReceived || []) {
+        const amount = p.invoiceAmount || p.amount || 0;
+        if (!p.invoiceNumber && !amount) continue; // not an invoice entry
+        const gstAmount = p.gstAmount || 0;
+        const rowStatus = p.amountDoneStatus === 'Done' ? 'Paid' : 'Pending';
+        const date = p.invoiceDate || p.date || c.createdAt;
+        if (status && status !== rowStatus) continue;
+        if (dateFrom && new Date(date) < new Date(dateFrom)) continue;
+        if (dateTo && new Date(date) > new Date(dateTo)) continue;
+        caseRows.push({
+          _id: `case:${c._id}:${p._id}`,
+          source: 'case',
+          caseId: c._id,
+          invoiceNo: p.invoiceNumber || `Case #${c.srNo}`,
+          date,
+          partner: null,
+          snapshot: { customerName: c.customerName, partnerName: c.referenceName || '' },
+          loanCase: { _id: c._id, srNo: c.srNo, customerName: c.customerName, bankName: c.bankName },
+          amount,
+          gstRate: amount > 0 ? Math.round((gstAmount / amount) * 100) : 0,
+          gstAmount,
+          totalAmount: amount + gstAmount,
+          status: rowStatus,
+        });
+      }
+    }
+  }
+
+  const items = [
+    ...invoiceDocs.map((d) => ({ ...d, source: 'invoice' })),
+    ...caseRows,
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  res.json({ items, total: items.length });
 }
 
 export async function getInvoice(req, res) {
