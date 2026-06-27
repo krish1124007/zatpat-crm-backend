@@ -3,6 +3,7 @@ import Invoice from '../models/Invoice.js';
 import Expense from '../models/Expense.js';
 import User from '../models/User.js';
 import Activity from '../models/Activity.js';
+import Setting from '../models/Setting.js';
 
 const ACTIVE_STATUSES = LOAN_STATUSES.filter(
   (s) => !['Disbursed', 'Rejected', 'Cancelled', 'Not interested'].includes(s)
@@ -458,6 +459,63 @@ export async function todaysWork(_req, res) {
     overdueCount: items.filter((i) => i.daysOverdue > 0).length,
     doneTodayCount: items.filter((i) => i.daysOverdue === -1).length,
   });
+}
+
+// ── Overdue / SLA Alerts ──
+// Cases that have sat in their current stage longer than the admin-configured
+// day-limit for that stage (+ any per-case extension). Privileged roles see all
+// cases; an Employee sees only the cases assigned to them.
+export async function overdueCases(req, res) {
+  const setting = await Setting.getGlobal();
+  const slaMap = setting.slaDaysByStatus || new Map();
+
+  const isPrivileged = ['Admin', 'SuperAdmin', 'Manager'].includes(req.user.role);
+
+  const match = {
+    isDeleted: { $ne: true },
+    currentStatus: { $in: ACTIVE_STATUSES },
+  };
+  if (!isPrivileged) match.handledBy = req.user._id;
+
+  const cases = await LoanCase.find(match)
+    .select('srNo customerName phone bankName currentStatus handledBy statusHistory entryDate createdAt slaExtensionDays loanAmount')
+    .populate('handledBy', 'name')
+    .lean();
+
+  const now = Date.now();
+  const items = [];
+  for (const c of cases) {
+    const limit = Number(slaMap.get(c.currentStatus)) || 0;
+    if (limit <= 0) continue; // no SLA configured for this stage
+
+    // When did the case enter its current stage? Use the latest matching
+    // statusHistory entry; fall back to entry/created date for legacy rows.
+    const entry = [...(c.statusHistory || [])].reverse().find((h) => h.status === c.currentStatus);
+    const enteredAt = entry?.enteredAt || c.entryDate || c.createdAt;
+    const daysInStage = Math.floor((now - new Date(enteredAt).getTime()) / 86400000);
+    const effectiveLimit = limit + (c.slaExtensionDays || 0);
+    if (daysInStage <= effectiveLimit) continue;
+
+    items.push({
+      _id: c._id,
+      srNo: c.srNo,
+      customerName: c.customerName,
+      phone: c.phone,
+      bankName: c.bankName,
+      currentStatus: c.currentStatus,
+      handledBy: c.handledBy,
+      enteredAt,
+      daysInStage,
+      limit,
+      extensionDays: c.slaExtensionDays || 0,
+      effectiveLimit,
+      daysOverdue: daysInStage - effectiveLimit,
+      loanAmount: c.loanAmount || 0,
+    });
+  }
+
+  items.sort((a, b) => b.daysOverdue - a.daysOverdue);
+  res.json({ items, count: items.length, canExtend: isPrivileged });
 }
 
 // ── Live Activity Feed ──

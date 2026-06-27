@@ -43,7 +43,7 @@ const UPDATABLE_FIELDS = new Set([
   'propertyType', 'provisionalBanks',
   'referralId', 'referenceName', 'referencePhone', 'referenceDetails', 'referencePartner',
   'bankerDetails',
-  'disbursementType', 'postDisbursementStage',
+  'disbursementType', 'postDisbursementStage', 'slaExtensionDays',
   // Insurance
   'insuranceCompany', 'insuranceAmount', 'insurancePolicyNumber', 'insuranceStatus',
   // Sanction letter
@@ -174,6 +174,9 @@ export async function listCases(req, res) {
     referenceName,
     bankerConfirmation,
     handoverConfirmation,
+    invoiceStatus,
+    paymentStatus,
+    gstStatus,
     insuranceStatus,
     profession,
     sendFeedbackForm,
@@ -202,12 +205,17 @@ export async function listCases(req, res) {
   if (disbursementType) filter.disbursementType = multi(disbursementType);
   if (bankerConfirmation) filter['bankerDetails.bankerConfirmation'] = bankerConfirmation;
   if (handoverConfirmation) filter['bankerDetails.handoverConfirmation'] = handoverConfirmation;
+  if (invoiceStatus) filter['bankerDetails.invoiceStatus'] = invoiceStatus;
   if (insuranceStatus) filter.insuranceStatus = insuranceStatus;
   if (profession) filter.profession = multi(profession);
   if (req.query.cibilIssue) filter.cibilIssue = req.query.cibilIssue;
   if (sendFeedbackForm) filter.sendFeedbackForm = sendFeedbackForm;
   if (sendReviewLink) filter.sendReviewLink = sendReviewLink;
   if (pendingPayment === 'true') filter.pendingPaymentAmount = { $gt: 0 };
+  // Invoices folder: payment & GST status tabs.
+  if (paymentStatus === 'pending') filter.pendingPaymentAmount = { $gt: 0 };
+  else if (paymentStatus === 'done') filter.pendingPaymentAmount = { $lte: 0 };
+  if (gstStatus) filter['paymentReceived.gstStatus'] = gstStatus;
   if (req.query.hasPartPayment === 'true') filter['partPayments.0'] = { $exists: true };
   if (referenceName) {
     filter.referenceName = new RegExp(referenceName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
@@ -433,17 +441,26 @@ export async function uploadSanctionLetter(req, res) {
 
 // Distinct values used to populate filter dropdowns on the client.
 export async function getCaseFacets(_req, res) {
-  const [channelNames, bankNames, handlers] = await Promise.all([
+  const [channelNames, bankNames, handlers, dataProfessions, professionOptions] = await Promise.all([
     LoanCase.distinct('channelName'),
     LoanCase.distinct('bankName'),
     LoanCase.distinct('handledBy'),
+    LoanCase.distinct('profession'),
+    DropdownOption.find({ type: 'profession', isActive: true }).select('value').lean(),
   ]);
+  // Profession ("Type") filter options: standard list + any custom types the
+  // user created or actually assigned to a case.
+  const professions = [...new Set([
+    ...PROFESSIONS,
+    ...dataProfessions.filter(Boolean),
+    ...professionOptions.map((o) => o.value).filter(Boolean),
+  ])];
   res.json({
     channelNames: channelNames.filter(Boolean),
     bankNames: bankNames.filter(Boolean),
     statuses: LOAN_STATUSES,
     products: PRODUCTS,
-    professions: PROFESSIONS,
+    professions,
     loanTypes: LOAN_TYPES,
     propertyTypes: PROPERTY_TYPES,
     disbursementTypes: DISBURSEMENT_TYPES,

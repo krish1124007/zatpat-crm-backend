@@ -278,6 +278,9 @@ const loanCaseSchema = new mongoose.Schema(
     // Post-disbursement tracking
     postDisbursementStage: { type: String, enum: [...POST_DISBURSEMENT_STAGES, ''], default: '' },
 
+    // SLA: extra days granted to THIS case before it counts as overdue (admin override).
+    slaExtensionDays: { type: Number, default: 0 },
+
     // Customer Communication / Feedback
     sendFeedbackForm: { type: String, enum: ['', 'Done', 'Pending'], default: '' },
     sendReviewLink: { type: String, enum: ['', 'Done', 'Pending'], default: '' },

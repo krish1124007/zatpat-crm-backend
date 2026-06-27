@@ -15,6 +15,7 @@ import {
   conversionRatios,
   todaysWork,
   activities,
+  overdueCases,
 } from '../controllers/dashboard.controller.js';
 
 const router = Router();
@@ -33,5 +34,6 @@ router.get('/all-distributions', ah(allDistributions));
 router.get('/conversion-ratios', ah(conversionRatios));
 router.get('/todays-work', ah(todaysWork));
 router.get('/activities', ah(activities));
+router.get('/overdue', ah(overdueCases));
 
 export default router;

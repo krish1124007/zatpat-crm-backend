@@ -26,6 +26,7 @@ import insuranceRoutes from './routes/insurance.routes.js';
 import contestsRoutes from './routes/contests.routes.js';
 import followupsRoutes from './routes/followups.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 
 
 const __filename = fileURLToPath(import.meta.url);
@@ -70,6 +71,7 @@ app.use('/api/v1/insurance', insuranceRoutes);
 app.use('/api/v1/contests', contestsRoutes);
 app.use('/api/v1/followups', followupsRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/settings', settingsRoutes);
 
 
 // Health & auth smoke-test endpoints
