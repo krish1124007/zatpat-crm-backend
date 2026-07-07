@@ -563,6 +563,30 @@ export async function referencePartnersAutocomplete(req, res) {
   res.json({ items: formatted });
 }
 
+// Distinct bankers previously entered (name + mobile + email) for auto-fill.
+export async function bankersAutocomplete(_req, res) {
+  const items = await LoanCase.aggregate([
+    { $match: { 'bankerDetails.name': { $nin: [null, ''] } } },
+    { $sort: { updatedAt: -1 } },
+    {
+      $group: {
+        _id: '$bankerDetails.name',
+        mobileNumber: { $first: '$bankerDetails.mobileNumber' },
+        emailId: { $first: '$bankerDetails.emailId' },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  res.json({
+    items: items.map((it) => ({
+      name: it._id,
+      mobileNumber: it.mobileNumber || '',
+      emailId: it.emailId || '',
+    })),
+  });
+}
+
 // Get dropdown options by type
 export async function getDropdownOptions(req, res) {
   const { type } = req.query;

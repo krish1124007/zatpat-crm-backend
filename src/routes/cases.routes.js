@@ -16,6 +16,7 @@ import {
   downloadOfferLetter,
   listReferencePartners,
   referencePartnersAutocomplete,
+  bankersAutocomplete,
   uploadSanctionLetter,
   getDropdownOptions,
   createDropdownOption,
@@ -32,6 +33,7 @@ router.post('/', ah(createCase));
 router.get('/facets', ah(getCaseFacets));
 router.get('/reference-partners', ah(listReferencePartners));
 router.get('/reference-partners-autocomplete', ah(referencePartnersAutocomplete));
+router.get('/bankers-autocomplete', ah(bankersAutocomplete));
 
 // Dropdown options endpoints
 router.get('/dropdowns/all', ah(getAllDropdownOptions));
