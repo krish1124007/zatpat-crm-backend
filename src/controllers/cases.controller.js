@@ -37,7 +37,7 @@ const UPDATABLE_FIELDS = new Set([
   'currentStatus', 'confirmationStatus', 'handoverStatus',
   'documents',
   'legalAdvocateName', 'valuationAmount', 'technicalDetails',
-  'specialNotes', 'handledBy',
+  'specialNotes', 'queryNotes', 'handledBy',
   // New fields
   'fileNumber', 'bankUserId', 'bankPassword',
   'propertyType', 'provisionalBanks',

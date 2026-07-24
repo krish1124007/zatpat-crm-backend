@@ -357,6 +357,10 @@ const loanCaseSchema = new mongoose.Schema(
 
     specialNotes: { type: String, default: '' },
 
+    // Query / pendency notes — free text shown as its own "Query" column in the
+    // cases grid, used to jot notes or list document pendency for a file.
+    queryNotes: { type: String, default: '' },
+
     handledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
