@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { nextSeq } from './Counter.js';
 
 export const LOAN_STATUSES = [
+  'New Inquiry',
   'Query',
   'Hold',
   'Ready Login',
@@ -268,7 +269,8 @@ const loanCaseSchema = new mongoose.Schema(
     handoverDate: { type: Date },
 
     // Status
-    currentStatus: { type: String, default: 'Query', index: true },
+    // New cases start as 'New Inquiry' — they move to 'Query' once work starts.
+    currentStatus: { type: String, default: 'New Inquiry', index: true },
     confirmationStatus: { type: String, default: '' },
     handoverStatus: { type: String, default: '' },
 

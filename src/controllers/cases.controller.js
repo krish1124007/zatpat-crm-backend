@@ -99,6 +99,9 @@ const createSchema = z.object({
   loanRequiredAmount: z.number().int().nonnegative().optional(),
   loanType: z.string().optional(),
   specialRemark: z.string().optional(),
+  // Query / pendency note — same field as the grid's "Query" column.
+  queryNotes: z.string().optional(),
+  specialNotes: z.string().optional(),
   bankName: z.string().optional(),
   channelName: z.string().optional(),
   currentStatus: z.string().optional(),
@@ -299,7 +302,7 @@ export async function updateCase(req, res) {
 
   // Auto-status logic for Bank Finalized
   if (updates.bankName && !req.body.currentStatus) {
-    const earlyStatuses = ['Query', 'Hold', 'Ready Login'];
+    const earlyStatuses = ['New Inquiry', 'Query', 'Hold', 'Ready Login'];
     if (earlyStatuses.includes(doc.currentStatus)) {
       doc.currentStatus = 'Bank finalized';
     }

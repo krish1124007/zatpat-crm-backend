@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 // its limit is flagged "overdue" on the dashboard. 0 = no limit (never flagged).
 // Only the active pipeline stages have a default; closed/terminal stages don't.
 export const DEFAULT_SLA_DAYS = {
+  'New Inquiry': 3,
   'Query': 15,
   'Hold': 7,
   'Ready Login': 7,

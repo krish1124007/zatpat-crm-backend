@@ -289,8 +289,9 @@ export async function pipelineSummary(_req, res) {
 
   const statusMap = Object.fromEntries(statusAgg.map((r) => [r._id, r]));
 
-  // Pipeline stages in order
-  const pipeline = LOAN_STATUSES.slice(0, 9).map((s) => ({
+  // Pipeline stages in order — every stage from New Inquiry through Disbursed (excludes the
+  // closed buckets: Rejected / Cancelled / Not interested).
+  const pipeline = LOAN_STATUSES.slice(0, LOAN_STATUSES.indexOf('Disbursed') + 1).map((s) => ({
     status: s,
     count: statusMap[s]?.count || 0,
     totalLoan: statusMap[s]?.totalLoan || 0,
