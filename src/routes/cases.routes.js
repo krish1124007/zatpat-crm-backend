@@ -12,6 +12,7 @@ import {
   addFollowUp,
   addPayment,
   getCaseFacets,
+  checkDuplicateCase,
   downloadExpenseSheet,
   downloadOfferLetter,
   listReferencePartners,
@@ -31,6 +32,7 @@ router.use(requireAuth);
 router.get('/', ah(listCases));
 router.post('/', ah(createCase));
 router.get('/facets', ah(getCaseFacets));
+router.get('/check-duplicate', ah(checkDuplicateCase));
 router.get('/reference-partners', ah(listReferencePartners));
 router.get('/reference-partners-autocomplete', ah(referencePartnersAutocomplete));
 router.get('/bankers-autocomplete', ah(bankersAutocomplete));

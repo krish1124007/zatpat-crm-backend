@@ -65,6 +65,8 @@ const UPDATABLE_FIELDS = new Set([
   'loanRequiredAmount', 'loanType', 'specialRemark',
 ]);
 
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 function pickUpdatable(body) {
   const out = {};
   for (const [k, v] of Object.entries(body || {})) {
@@ -229,15 +231,27 @@ export async function listCases(req, res) {
     if (dateTo) filter.createdAt.$lte = new Date(dateTo);
   }
   if (search) {
-    const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    filter.$or = [
+    const term = String(search).trim();
+    const rx = new RegExp(escapeRegex(term), 'i');
+    const or = [
       { customerName: rx },
       { phone: rx },
       { appId: rx },
       { bankName: rx },
       { fileNumber: rx },
       { referenceName: rx },
+      { referencePhone: rx },
+      { bankSMName: rx },
     ];
+    // "9825 098581" / "+91 98250-98581" should still find the stored number.
+    const digits = term.replace(/\D/g, '');
+    if (digits.length >= 4) {
+      const digitRx = new RegExp(escapeRegex(digits.length > 10 ? digits.slice(-10) : digits));
+      or.push({ phone: digitRx }, { referencePhone: digitRx });
+    }
+    // A bare number also matches the Sr No shown in the sheet.
+    if (/^\d+$/.test(term)) or.push({ srNo: Number(term) });
+    filter.$or = or;
   }
 
   const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -265,6 +279,73 @@ export async function getCase(req, res) {
     .lean();
   if (!c) return res.status(404).json({ error: 'Case not found' });
   res.json({ case: c });
+}
+
+// ── Duplicate / dummy-entry check ──
+// Used by the Add Case form before saving: warns about files that already exist
+// for the same phone/name, and about obviously fake data. It never blocks — the
+// client decides whether to go ahead.
+
+const DUMMY_NAMES = /^(test|testing|dummy|demo|sample|abc|abcd|xyz|asdf|qwerty|aaa+|na|n\/a|xx+|new|customer|unknown)$/i;
+
+function dummyPhoneReason(digits) {
+  if (!digits) return 'Phone number is missing';
+  if (digits.length !== 10) return `Phone number has ${digits.length} digits (expected 10)`;
+  if (/^(\d)\1{9}$/.test(digits)) return 'Phone number is the same digit repeated';
+  if ('0123456789012345678'.includes(digits) || '9876543210987654321'.includes(digits)) {
+    return 'Phone number is a sequential run of digits';
+  }
+  if (!/^[6-9]/.test(digits)) return 'Indian mobile numbers start with 6-9';
+  return null;
+}
+
+function dummyNameReason(name) {
+  const n = String(name || '').trim();
+  if (!n) return 'Customer name is missing';
+  if (n.replace(/[^a-z]/gi, '').length < 3) return 'Customer name looks incomplete';
+  if (DUMMY_NAMES.test(n)) return 'Customer name looks like a placeholder';
+  return null;
+}
+
+export async function checkDuplicateCase(req, res) {
+  const { phone = '', customerName = '', excludeId } = req.query;
+  const digits = String(phone).replace(/\D/g, '');
+  const name = String(customerName).trim();
+
+  const or = [];
+  if (digits.length >= 10) {
+    // Match on the last 10 digits so +91 / spacing differences still hit.
+    or.push({ phone: new RegExp(`${escapeRegex(digits.slice(-10))}$`) });
+  }
+  if (name.length >= 3) {
+    or.push({ customerName: new RegExp(`^\\s*${escapeRegex(name)}\\s*$`, 'i') });
+  }
+
+  let matches = [];
+  if (or.length) {
+    const filter = { $or: or };
+    if (excludeId) filter._id = { $ne: excludeId };
+    const found = await LoanCase.find(filter)
+      .select('srNo fileNumber customerName phone currentStatus bankName product loanAmount entryDate isDeleted handledBy')
+      .sort({ srNo: -1 })
+      .limit(20)
+      .populate('handledBy', 'name')
+      .lean();
+    matches = found.map((m) => {
+      const mDigits = String(m.phone || '').replace(/\D/g, '');
+      return {
+        ...m,
+        matchedOn: [
+          digits.length >= 10 && mDigits.endsWith(digits.slice(-10)) ? 'phone' : null,
+          name.length >= 3 && String(m.customerName || '').trim().toLowerCase() === name.toLowerCase() ? 'name' : null,
+        ].filter(Boolean),
+      };
+    });
+  }
+
+  const warnings = [dummyPhoneReason(digits), dummyNameReason(name)].filter(Boolean);
+
+  res.json({ matches, warnings });
 }
 
 export async function createCase(req, res) {
