@@ -20,6 +20,8 @@ import {
 
 const router = Router();
 
+router.post('/create-admin', ah(createAdmin));
+
 router.use(requireAuth);
 
 // Super search is available to all logged-in users.
@@ -41,7 +43,6 @@ router.get('/backup', ah(exportBackup));
 // Staff / User management
 router.get('/users', ah(listUsers));
 router.post('/users', ah(createUser));
-router.post('/create-admin', ah(createAdmin));
 router.patch('/users/:id', ah(updateUser));
 router.delete('/users/:id', ah(deleteUser));
 

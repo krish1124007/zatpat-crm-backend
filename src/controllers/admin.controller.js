@@ -151,6 +151,13 @@ export async function createAdmin(req, res) {
   const parsed = adminCreateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   try {
+    const existingAdmin = await User.exists({ role: { $in: ['Admin', 'SuperAdmin'] } });
+    if (existingAdmin) {
+      return res.status(403).json({
+        error: 'An admin already exists. Authenticate to create another admin.',
+      });
+    }
+
     const user = await User.create({ ...parsed.data, role: 'Admin' });
     res.status(201).json({ user: user.toSafeJSON() });
   } catch (e) {
