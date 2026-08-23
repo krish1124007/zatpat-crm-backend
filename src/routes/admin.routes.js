@@ -13,6 +13,7 @@ import {
   superSearch,
   listUsers,
   createUser,
+  createAdmin,
   updateUser,
   deleteUser,
 } from '../controllers/admin.controller.js';
@@ -40,6 +41,7 @@ router.get('/backup', ah(exportBackup));
 // Staff / User management
 router.get('/users', ah(listUsers));
 router.post('/users', ah(createUser));
+router.post('/create-admin', ah(createAdmin));
 router.patch('/users/:id', ah(updateUser));
 router.delete('/users/:id', ah(deleteUser));
 

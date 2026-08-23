@@ -140,6 +140,25 @@ export async function createUser(req, res) {
   }
 }
 
+const adminCreateSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().min(5),
+  password: z.string().min(6),
+});
+
+export async function createAdmin(req, res) {
+  const parsed = adminCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  try {
+    const user = await User.create({ ...parsed.data, role: 'Admin' });
+    res.status(201).json({ user: user.toSafeJSON() });
+  } catch (e) {
+    if (e.code === 11000) return res.status(409).json({ error: 'Email or phone already in use' });
+    throw e;
+  }
+}
+
 const userUpdateSchema = z.object({
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
