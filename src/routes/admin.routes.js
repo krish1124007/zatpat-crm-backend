@@ -10,6 +10,7 @@ import {
   listAuditLogs,
   auditFacets,
   exportBackup,
+  transferDatabase,
   superSearch,
   listUsers,
   createUser,
@@ -39,6 +40,7 @@ router.get('/audit-logs', ah(listAuditLogs));
 router.get('/audit-logs/facets', ah(auditFacets));
 
 router.get('/backup', ah(exportBackup));
+router.post('/transfer-db', ah(transferDatabase));
 
 // Staff / User management
 router.get('/users', ah(listUsers));

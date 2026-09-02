@@ -9,6 +9,7 @@ import Salary from '../models/Salary.js';
 import Insurance from '../models/Insurance.js';
 import Contest from '../models/Contest.js';
 import User from '../models/User.js';
+import { executeTransfer } from '../scripts/transferDatabase.js';
 
 // ──────────────── IP Whitelist ────────────────
 
@@ -111,6 +112,20 @@ export async function exportBackup(_req, res) {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', `attachment; filename="zatpat-backup-${stamp}.json"`);
   res.send(JSON.stringify(payload, null, 2));
+}
+
+export async function transferDatabase(req, res) {
+  const { targetUri } = req.body || {};
+  if (!targetUri || typeof targetUri !== 'string' || !targetUri.trim()) {
+    return res.status(400).json({ error: 'Target MongoDB URI is required' });
+  }
+
+  try {
+    const result = await executeTransfer({ targetUri: targetUri.trim() });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Database transfer failed' });
+  }
 }
 
 // ──────────────── Staff / User Management ────────────────
