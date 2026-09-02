@@ -115,6 +115,30 @@ export async function exportBackup(_req, res) {
 
 // ──────────────── Staff / User Management ────────────────
 
+const USER_FIELD_LABELS = { email: 'Email', phone: 'Phone number' };
+
+// Turns a Mongo duplicate-key error into a message that names the field that
+// actually collided. Blanket-blaming "email or phone" hides the real cause when
+// the collision comes from some other unique index on the collection.
+function duplicateKeyMessage(e, labels = {}) {
+  const field = Object.keys(e.keyPattern || e.keyValue || {})[0];
+  if (!field) return 'A record with these details already exists';
+  if (labels[field]) return `${labels[field]} already in use`;
+  return `Could not save: a unique index on "${field}" rejected this record. ` +
+    'That field is not part of the CRM user form — check the users collection for a stale index.';
+}
+
+// Reports which of email/phone is taken, before Mongo gets a chance to answer
+// with a vaguer error.
+async function findUserConflict({ email, phone }, excludeId) {
+  const wanted = String(email || '').toLowerCase();
+  const q = { $or: [{ email: wanted }, { phone }] };
+  if (excludeId) q._id = { $ne: excludeId };
+  const clash = await User.findOne(q).select('email phone').lean();
+  if (!clash) return null;
+  return clash.email === wanted ? 'Email already in use' : 'Phone number already in use';
+}
+
 export async function listUsers(_req, res) {
   const items = await User.find({}).select('-password').sort({ createdAt: -1 }).lean();
   res.json({ items });
@@ -131,11 +155,17 @@ const userCreateSchema = z.object({
 export async function createUser(req, res) {
   const parsed = userCreateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const conflict = await findUserConflict(parsed.data);
+  if (conflict) return res.status(409).json({ error: conflict });
+
   try {
     const user = await User.create(parsed.data);
     res.status(201).json({ user: user.toSafeJSON() });
   } catch (e) {
-    if (e.code === 11000) return res.status(409).json({ error: 'Email or phone already in use' });
+    if (e.code === 11000) {
+      return res.status(409).json({ error: duplicateKeyMessage(e, USER_FIELD_LABELS) });
+    }
     throw e;
   }
 }
@@ -158,10 +188,15 @@ export async function createAdmin(req, res) {
       });
     }
 
+    const conflict = await findUserConflict(parsed.data);
+    if (conflict) return res.status(409).json({ error: conflict });
+
     const user = await User.create({ ...parsed.data, role: 'Admin' });
     res.status(201).json({ user: user.toSafeJSON() });
   } catch (e) {
-    if (e.code === 11000) return res.status(409).json({ error: 'Email or phone already in use' });
+    if (e.code === 11000) {
+      return res.status(409).json({ error: duplicateKeyMessage(e, USER_FIELD_LABELS) });
+    }
     throw e;
   }
 }
@@ -181,8 +216,24 @@ export async function updateUser(req, res) {
   const user = await User.findById(req.params.id).select('+password');
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.role === 'SuperAdmin') return res.status(403).json({ error: 'Cannot modify SuperAdmin' });
+
+  if (parsed.data.email || parsed.data.phone) {
+    const conflict = await findUserConflict(
+      { email: parsed.data.email ?? user.email, phone: parsed.data.phone ?? user.phone },
+      user._id
+    );
+    if (conflict) return res.status(409).json({ error: conflict });
+  }
+
   Object.assign(user, parsed.data);
-  await user.save();
+  try {
+    await user.save();
+  } catch (e) {
+    if (e.code === 11000) {
+      return res.status(409).json({ error: duplicateKeyMessage(e, USER_FIELD_LABELS) });
+    }
+    throw e;
+  }
   res.json({ user: user.toSafeJSON() });
 }
 
